@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>サイコロ</title>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --bg2: #e9e4d8;
+    --ink: #2b2620;
+    --accent: #c8553d;
+    --dice-bg: #fffdf8;
+    --dice-border: #2b2620;
+    --shadow: rgba(43, 38, 32, 0.25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1712;
+      --bg2: #242019;
+      --ink: #f0ece2;
+      --accent: #e07856;
+      --dice-bg: #2f2a22;
+      --dice-border: #f0ece2;
+      --shadow: rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1b1712;
+    --bg2: #242019;
+    --ink: #f0ece2;
+    --accent: #e07856;
+    --dice-bg: #2f2a22;
+    --dice-border: #f0ece2;
+    --shadow: rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.8rem;
+    background: radial-gradient(circle at 50% 20%, var(--bg2), var(--bg));
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+    padding: 2rem 1rem;
+    text-align: center;
+  }
+
+  h1 {
+    font-size: clamp(1.4rem, 4vw, 2rem);
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  /* --- 個数コントロール --- */
+  .count-control {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 1rem;
+  }
+
+  .count-control button {
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    border: 2px solid var(--dice-border);
+    background: var(--dice-bg);
+    color: var(--ink);
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .count-control button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .count-control span {
+    min-width: 4.5em;
+  }
+
+  /* --- サイコロ本体 --- */
+  #diceRow {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    max-width: 90vw;
+  }
+
+  .die {
+    width: min(22vw, 92px);
+    height: min(22vw, 92px);
+    filter: drop-shadow(0 10px 18px var(--shadow));
+    transition: transform 0.15s ease;
+  }
+
+  .die.rolling {
+    animation: shake 0.5s ease-in-out;
+  }
+
+  @keyframes shake {
+    0%   { transform: rotate(0deg) scale(1); }
+    20%  { transform: rotate(-14deg) scale(1.06); }
+    40%  { transform: rotate(12deg) scale(0.97); }
+    60%  { transform: rotate(-9deg) scale(1.05); }
+    80%  { transform: rotate(7deg) scale(0.98); }
+    100% { transform: rotate(0deg) scale(1); }
+  }
+
+  #result {
+    font-size: 1.15rem;
+    min-height: 1.6em;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  button.roll {
+    font-size: 1.1rem;
+    font-weight: 600;
+    padding: 0.9rem 2.4rem;
+    border-radius: 999px;
+    border: none;
+    background: var(--accent);
+    color: var(--dice-bg);
+    cursor: pointer;
+    box-shadow: 0 6px 16px var(--shadow);
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  button.roll:active {
+    transform: translateY(2px) scale(0.98);
+    box-shadow: 0 3px 8px var(--shadow);
+  }
+
+  footer {
+    font-size: 0.8rem;
+    opacity: 0.55;
+  }
+</style>
+</head>
+<body>
+
+<h1>🎲 サイコロを振ろう</h1>
+
+<div class="count-control">
+  <button id="decBtn" aria-label="サイコロを減らす">−</button>
+  <span id="countLabel">サイコロ 2個</span>
+  <button id="incBtn" aria-label="サイコロを増やす">＋</button>
+</div>
+
+<div id="diceRow"></div>
+
+<div id="result">タップして振ってみて</div>
+
+<button class="roll" id="rollBtn">振る</button>
+
+<footer>© サイコロ</footer>
+
+<script>
+  var MIN_DICE = 1;
+  var MAX_DICE = 8;
+  var diceCount = 2;
+  var currentValues = [];
+  var rolling = false;
+
+  var diceRow = document.getElementById('diceRow');
+  var countLabel = document.getElementById('countLabel');
+  var decBtn = document.getElementById('decBtn');
+  var incBtn = document.getElementById('incBtn');
+  var rollBtn = document.getElementById('rollBtn');
+  var result = document.getElementById('result');
+
+  var PIP_POS = {
+    1: [50, 25], 2: [50, 50], 3: [50, 75],
+    4: [25, 50], 5: [50, 50], 6: [75, 50],
+    7: [25, 75], 8: [50, 75], 9: [75, 75]
+  };
+  // 1..9 セル座標 (x,y)
+  var COORDS = {
+    1: [25, 25], 2: [50, 25], 3: [75, 25],
+    4: [25, 50], 5: [50, 50], 6: [75, 50],
+    7: [25, 75], 8: [50, 75], 9: [75, 75]
+  };
+
+  var FACES = {
+    1: [5],
+    2: [1, 9],
+    3: [1, 5, 9],
+    4: [1, 3, 7, 9],
+    5: [1, 3, 5, 7, 9],
+    6: [1, 3, 4, 6, 7, 9]
+  };
+
+  function dieSVG(value) {
+    var cells = FACES[value] || FACES[1];
+    var pips = '';
+    for (var i = 0; i < cells.length; i++) {
+      var c = COORDS[cells[i]];
+      var fill = (value === 1) ? 'var(--accent)' : 'var(--dice-border)';
+      pips += '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="7" fill="' + fill + '"></circle>';
+    }
+    return '<svg class="die" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="4" y="4" width="92" height="92" rx="18" fill="var(--dice-bg)" stroke="var(--dice-border)" stroke-width="4"></rect>' +
+      pips +
+      '</svg>';
+  }
+
+  function renderDice() {
+    var html = '';
+    for (var i = 0; i < diceCount; i++) {
+      var v = currentValues[i] || 1;
+      html += dieSVG(v);
+    }
+    diceRow.innerHTML = html;
+  }
+
+  function initValues() {
+    currentValues = [];
+    for (var i = 0; i < diceCount; i++) {
+      currentValues.push(1);
+    }
+  }
+
+  function updateCountLabel() {
+    countLabel.textContent = 'サイコロ ' + diceCount + '個';
+    decBtn.disabled = diceCount <= MIN_DICE;
+    incBtn.disabled = diceCount >= MAX_DICE;
+  }
+
+  initValues();
+  renderDice();
+  updateCountLabel();
+
+  decBtn.addEventListener('click', function () {
+    if (rolling || diceCount <= MIN_DICE) return;
+    diceCount--;
+    initValues();
+    renderDice();
+    updateCountLabel();
+    result.textContent = 'タップして振ってみて';
+  });
+
+  incBtn.addEventListener('click', function () {
+    if (rolling || diceCount >= MAX_DICE) return;
+    diceCount++;
+    initValues();
+    renderDice();
+    updateCountLabel();
+    result.textContent = 'タップして振ってみて';
+  });
+
+  rollBtn.addEventListener('click', function () {
+    if (rolling) return;
+    rolling = true;
+    rollBtn.disabled = true;
+    decBtn.disabled = true;
+    incBtn.disabled = true;
+    result.textContent = '';
+
+    var dieEls = diceRow.querySelectorAll('.die');
+    for (var k = 0; k < dieEls.length; k++) {
+      dieEls[k].classList.add('rolling');
+    }
+
+    var ticks = 0;
+    var maxTicks = 10;
+    var interval = setInterval(function () {
+      for (var i = 0; i < diceCount; i++) {
+        currentValues[i] = Math.floor(Math.random() * 6) + 1;
+      }
+      renderDice();
+      var refreshed = diceRow.querySelectorAll('.die');
+      for (var m = 0; m < refreshed.length; m++) {
+        refreshed[m].classList.add('rolling');
+      }
+
+      ticks++;
+      if (ticks >= maxTicks) {
+        clearInterval(interval);
+        for (var j = 0; j < diceCount; j++) {
+          currentValues[j] = Math.floor(Math.random() * 6) + 1;
+        }
+        renderDice();
+
+        var sum = 0;
+        for (var s = 0; s < currentValues.length; s++) sum += currentValues[s];
+        var text = '結果: ' + currentValues.join(' , ');
+        if (diceCount > 1) {
+          text += '  (合計 ' + sum + ')';
+        }
+        result.textContent = text;
+
+        rollBtn.disabled = false;
+        updateCountLabel();
+        rolling = false;
+      }
+    }, 80);
+  });
+</script>
+
+</body>
+</html>
